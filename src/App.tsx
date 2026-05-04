@@ -788,7 +788,21 @@ export default function App() {
         </AnimatePresence>
 
         {/* Footer info */}
-        <div className="mt-12 text-center">
+        <div className="mt-12 text-center pb-12 space-y-4">
+          <div className="flex flex-col items-center gap-4">
+            <a 
+              href="https://github.com/felipe-spengler/Tarefas-Diarias-App/actions" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-6 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-2xl border border-zinc-800 transition-all text-sm font-bold shadow-xl"
+            >
+              <Download size={18} /> BAIXAR APP (APK)
+            </a>
+            <p className="text-[10px] text-zinc-600 max-w-[200px] leading-relaxed">
+              Clique acima para baixar o APK direto do GitHub (requer login no GitHub).
+            </p>
+          </div>
+
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900/50 rounded-full text-[10px] text-zinc-600 uppercase tracking-widest border border-zinc-800/50">
             <AlertCircle size={12} />
             Verificação a cada 30 segundos
