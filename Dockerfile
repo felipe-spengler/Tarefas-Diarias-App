@@ -12,6 +12,7 @@ COPY --from=build-stage /app/dist /usr/share/nginx/html
 # Copia um config custom do nginx para garantir que o PWA e rotas funcionem
 RUN echo 'server { \
     listen 80; \
+    include /etc/nginx/mime.types; \
     location / { \
         root /usr/share/nginx/html; \
         index index.html index.htm; \
