@@ -11,7 +11,9 @@ import {
   AlertCircle,
   X,
   RotateCcw,
-  Settings
+  Settings,
+  History,
+  Download
 } from 'lucide-react';
 import { format, addMinutes, isSameDay, parseISO, isValid, isBefore } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
