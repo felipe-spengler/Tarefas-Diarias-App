@@ -2,6 +2,17 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Redireciona usuários web para a página de download (evita tela em branco do servidor)
+      // Mantém funcionamento normal local dentro do APK (localhost/capacitor)
+      if (window.location.hostname !== 'localhost' && 
+          !window.location.hostname.startsWith('127.0.0.1') &&
+          !window.location.hostname.startsWith('192.168.') &&
+          !window.location.href.startsWith('file:') && 
+          !window.location.href.startsWith('capacitor:')) {
+        window.location.replace('./download.html');
+      }
+    </script>
     <link rel="icon" type="image/png" href="/app_icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
