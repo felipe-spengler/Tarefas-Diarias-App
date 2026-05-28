@@ -1080,7 +1080,7 @@ export default function App() {
               <div className="flex justify-center pt-2">
                 {/* Download Direct APK */}
                 <a 
-                  href="/app-debug.apk"
+                  href="https://github.com/felipe-spengler/Tarefas-Diarias-App/releases/download/latest/app-debug.apk"
                   download="Silencioso-App.apk"
                   className="px-8 py-3.5 bg-primary-600 hover:bg-primary-500 text-white font-bold rounded-xl text-sm shadow-lg shadow-primary-950/40 transition-all flex items-center justify-center gap-2 active:scale-95 w-full max-w-xs"
                 >
@@ -1089,7 +1089,7 @@ export default function App() {
               </div>
               
               <p className="text-[10px] text-zinc-500 max-w-xs mx-auto leading-normal">
-                Nota: O APK já está hospedado e pronto para download no site!
+                Nota: O APK é compilado e atualizado automaticamente pelo GitHub Releases!
               </p>
             </div>
 
@@ -1165,7 +1165,7 @@ export default function App() {
         )}
 
         {/* --- BOTTOM NAVIGATION BAR --- */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 px-2 py-2 flex items-center justify-around">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 px-2 pt-2.5 pb-6 md:pb-3 flex items-center justify-around shadow-2xl">
           <button
             onClick={() => setCurrentTab('tasks')}
             className={cn(
