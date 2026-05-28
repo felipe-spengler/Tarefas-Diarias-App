@@ -1353,7 +1353,7 @@ export default function App() {
               <div className="flex justify-center pt-2">
                 {/* Download Direct APK */}
                 <a 
-                  href="https://github.com/felipe-spengler/Tarefas-Diarias-App/releases/download/latest/app-debug.apk"
+                  href="https://github.com/felipe-spengler/Tarefas-Diarias-App/releases/download/latest/Silencioso-App.apk"
                   download="Silencioso-App.apk"
                   className="px-8 py-3.5 bg-primary-600 hover:bg-primary-500 text-white font-bold rounded-xl text-sm shadow-lg shadow-primary-950/40 transition-all flex items-center justify-center gap-2 active:scale-95 w-full max-w-xs"
                 >

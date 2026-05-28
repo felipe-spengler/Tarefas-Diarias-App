@@ -11,7 +11,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: set up JDK 17
+
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
@@ -33,22 +34,36 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
+      - name: Rename APK
+        run: |
+          mv android/app/build/outputs/apk/debug/app-debug.apk \
+             android/app/build/outputs/apk/debug/Silencioso-App.apk
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Silencioso-App
+          path: android/app/build/outputs/apk/debug/Silencioso-App.apk
 
       - name: Create or Update Public Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "android/app/build/outputs/apk/debug/app-debug.apk"
+          artifacts: "android/app/build/outputs/apk/debug/Silencioso-App.apk"
           tag: "latest"
           name: "Silencioso App - Última Versão"
-          body: "Esta é a versão mais recente do aplicativo Silencioso (compilada automaticamente pelo GitHub Actions)."
+          body: |
+            ## 📱 Silencioso App
+
+            **Build:** #${{ github.run_number }}
+            **Commit:** ${{ github.sha }}
+            **Data:** ${{ github.event.head_commit.timestamp }}
+            **Mensagem:** ${{ github.event.head_commit.message }}
+
+            ---
+            > Versão compilada automaticamente pelo GitHub Actions a cada atualização do código.
+            > Baixe o arquivo `Silencioso-App.apk` abaixo e instale no Android.
           allowUpdates: true
-          removeArtifacts: false
+          removeArtifacts: true
           replacesArtifacts: true
           makeLatest: true
           token: ${{ secrets.GITHUB_TOKEN }}
-
