@@ -71,6 +71,13 @@ const CATEGORIES = {
   other: { label: 'Outros', color: 'bg-zinc-500', text: 'text-zinc-400' },
 };
 
+const ALARM_SOUNDS = [
+  { name: 'Beep Beep (Digital Clássico)', url: 'https://assets.mixkit.co/active_storage/sfx/941/941-preview.mp3' },
+  { name: 'Sinos Chime (Suave e Agradável)', url: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' },
+  { name: 'Alerta Retrô (Eletrônico)', url: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3' },
+  { name: 'Melodia Chime (Moderno)', url: 'https://assets.mixkit.co/active_storage/sfx/1353/1353-preview.mp3' }
+];
+
 const DAYS = [
   { label: 'D', value: 0 },
   { label: 'S', value: 1 },
@@ -94,6 +101,10 @@ export default function App() {
   const [condTargetId, setCondTargetId] = useState('');
   const [condReqId, setCondReqId] = useState('');
 
+  // Vibration and Custom Alarm Audio Settings
+  const [vibrationEnabled, setVibrationEnabled] = useState(true);
+  const [selectedAudioUrl, setSelectedAudioUrl] = useState('https://assets.mixkit.co/active_storage/sfx/941/941-preview.mp3');
+
   // Global States
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isHolidayMode, setIsHolidayMode] = useState(false);
@@ -116,22 +127,32 @@ export default function App() {
     audio.loop = true;
   }, [audio]);
 
+  useEffect(() => {
+    audio.src = selectedAudioUrl;
+  }, [selectedAudioUrl, audio]);
+
   // --- Persistence ---
   useEffect(() => {
     const savedTasks = localStorage.getItem('silent_tasks');
     const savedHistory = localStorage.getItem('silent_history');
     const savedHoliday = localStorage.getItem('silent_holiday');
+    const savedVibration = localStorage.getItem('silent_vibration');
+    const savedAudio = localStorage.getItem('silent_audio_url');
     
     if (savedTasks) setTasks(JSON.parse(savedTasks));
     if (savedHistory) setHistory(JSON.parse(savedHistory));
     if (savedHoliday) setIsHolidayMode(JSON.parse(savedHoliday));
+    if (savedVibration) setVibrationEnabled(JSON.parse(savedVibration));
+    if (savedAudio) setSelectedAudioUrl(savedAudio);
   }, []);
 
   useEffect(() => {
     localStorage.setItem('silent_tasks', JSON.stringify(tasks));
     localStorage.setItem('silent_history', JSON.stringify(history));
     localStorage.setItem('silent_holiday', JSON.stringify(isHolidayMode));
-  }, [tasks, history, isHolidayMode]);
+    localStorage.setItem('silent_vibration', JSON.stringify(vibrationEnabled));
+    localStorage.setItem('silent_audio_url', selectedAudioUrl);
+  }, [tasks, history, isHolidayMode, vibrationEnabled, selectedAudioUrl]);
 
   // --- Notification Permission ---
   useEffect(() => {
@@ -257,7 +278,9 @@ export default function App() {
 
     // Native Capacitor Notifications
     if (Capacitor.isNativePlatform()) {
-      Haptics.impact({ style: ImpactStyle.Heavy });
+      if (vibrationEnabled) {
+        Haptics.impact({ style: ImpactStyle.Heavy });
+      }
       await LocalNotifications.schedule({
         notifications: [
           {
@@ -274,12 +297,15 @@ export default function App() {
     } else {
       // Web Notifications
       if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Alarme Silencioso', {
+        const notifOptions: any = {
           body: message,
           icon: '/vite.svg',
-          vibrate: [500, 100, 500, 100, 500],
           requireInteraction: true,
-        } as any);
+        };
+        if (vibrationEnabled) {
+          notifOptions.vibrate = [500, 100, 500, 100, 500];
+        }
+        new Notification('Alarme Silencioso', notifOptions);
       }
     }
   };
@@ -904,7 +930,7 @@ export default function App() {
           </motion.div>
         )}
 
-        {/* --- ABA 4: INSTALAR & COMPARTILHAR --- */}
+        {/* --- ABA 4: AJUSTES & INSTALAÇÃO --- */}
         {currentTab === 'install' && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -914,10 +940,74 @@ export default function App() {
           >
             <header className="mb-6">
               <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                <Share2 className="text-primary-500" size={24} /> Compartilhar e Instalar
+                <Settings className="text-primary-500" size={24} /> Configurações & Instalação
               </h2>
-              <p className="text-zinc-500 text-sm mt-1">Compartilhe o app com amigos e configure o seu celular.</p>
+              <p className="text-zinc-500 text-sm mt-1">Gerencie sons, vibração e compartilhamento do app.</p>
             </header>
+
+            {/* Configurações de Alarme (Som & Vibração) */}
+            <div className="glass p-6 rounded-[2rem] border border-zinc-800 space-y-4 shadow-xl">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-primary-400 flex items-center gap-2">
+                <Sliders size={16} /> Ajustes de Alarme
+              </h3>
+              
+              <div className="space-y-4">
+                {/* Vibração */}
+                <div className="flex items-center justify-between py-2 border-b border-zinc-800/40">
+                  <div className="space-y-0.5 pr-4">
+                    <h4 className="text-sm font-bold text-zinc-200">Vibração ao Disparar</h4>
+                    <p className="text-[11px] text-zinc-500">Ativa a vibração (haptics) do celular quando o alarme toca.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVibrationEnabled(!vibrationEnabled);
+                      if (Capacitor.isNativePlatform()) {
+                        Haptics.impact({ style: ImpactStyle.Light });
+                      }
+                    }}
+                    className={cn(
+                      "w-12 h-6 rounded-full p-1 transition-all duration-200 flex items-center",
+                      vibrationEnabled ? "bg-primary-600 justify-end" : "bg-zinc-800 justify-start"
+                    )}
+                  >
+                    <motion.div 
+                      layout
+                      className="w-4 h-4 bg-white rounded-full shadow"
+                    />
+                  </button>
+                </div>
+
+                {/* Som do Alarme */}
+                <div className="flex flex-col gap-2.5 py-2">
+                  <div className="space-y-0.5">
+                    <h4 className="text-sm font-bold text-zinc-200">Som do Alarme</h4>
+                    <p className="text-[11px] text-zinc-500">Escolha o toque do seu alarme inteligente (toca um preview ao alterar).</p>
+                  </div>
+                  <select
+                    className="w-full text-sm bg-zinc-900 border border-zinc-800 text-zinc-200 focus:border-primary-500"
+                    value={selectedAudioUrl}
+                    onChange={(e) => {
+                      const newUrl = e.target.value;
+                      setSelectedAudioUrl(newUrl);
+                      
+                      // Toca um preview curto de 2 segundos
+                      audio.src = newUrl;
+                      audio.currentTime = 0;
+                      audio.play().catch(err => console.log('Preview bloqueado pela segurança do navegador'));
+                      setTimeout(() => {
+                        audio.pause();
+                        audio.currentTime = 0;
+                      }, 2000);
+                    }}
+                  >
+                    {ALARM_SOUNDS.map(sound => (
+                      <option key={sound.url} value={sound.url}>{sound.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
 
             {/* Premium Download Box */}
             <div className="glass p-6 rounded-[2rem] border border-primary-500/20 bg-gradient-to-br from-primary-600/15 via-transparent to-transparent space-y-5 text-center relative overflow-hidden">
@@ -1075,8 +1165,8 @@ export default function App() {
               currentTab === 'install' ? "text-primary-400 font-bold" : "text-zinc-500 hover:text-zinc-300"
             )}
           >
-            <Share2 size={20} className={currentTab === 'install' ? "scale-110 text-primary-500" : ""} />
-            <span className="text-[10px] tracking-wider">Compartilhar</span>
+            <Settings size={20} className={currentTab === 'install' ? "scale-110 text-primary-500" : ""} />
+            <span className="text-[10px] tracking-wider">Ajustes</span>
           </button>
         </div>
 
