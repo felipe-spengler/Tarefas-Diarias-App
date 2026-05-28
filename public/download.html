@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Silencioso App – Baixar APK</title>
+  <meta name="description" content="Baixe o Silencioso App para Android. Gerenciador inteligente de tarefas e alarmes silenciosos." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #09090b;
+      color: #f4f4f5;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: linear-gradient(135deg, rgba(139,92,246,0.12), rgba(9,9,11,0));
+      border: 1px solid rgba(139,92,246,0.25);
+      border-radius: 28px;
+      padding: 48px 36px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(139,92,246,0.1);
+    }
+
+    .icon-wrap {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #7c3aed, #a855f7);
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+      font-size: 36px;
+      box-shadow: 0 16px 40px rgba(124,58,237,0.4);
+      animation: pulse 2.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 16px 40px rgba(124,58,237,0.4); }
+      50%       { box-shadow: 0 16px 56px rgba(124,58,237,0.7); }
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 900;
+      background: linear-gradient(135deg, #a78bfa, #7c3aed);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #71717a;
+      font-size: 0.9rem;
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+
+    .features {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 36px;
+      text-align: left;
+    }
+
+    .feature {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 0.85rem;
+      color: #a1a1aa;
+    }
+
+    .feature-icon {
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    .btn-download {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 18px 24px;
+      background: linear-gradient(135deg, #7c3aed, #a855f7);
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      text-decoration: none;
+      border-radius: 16px;
+      transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+      box-shadow: 0 8px 24px rgba(124,58,237,0.4);
+      margin-bottom: 16px;
+    }
+
+    .btn-download:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px rgba(124,58,237,0.55);
+    }
+
+    .btn-download:active {
+      transform: scale(0.97);
+      opacity: 0.9;
+    }
+
+    .note {
+      font-size: 0.75rem;
+      color: #52525b;
+      line-height: 1.6;
+    }
+
+    .note a {
+      color: #7c3aed;
+      text-decoration: none;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(34,197,94,0.1);
+      border: 1px solid rgba(34,197,94,0.25);
+      color: #4ade80;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: #4ade80;
+      border-radius: 50%;
+      animation: blink 1.5s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.2; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-wrap">🔕</div>
+
+    <div class="badge">Atualizado automaticamente</div>
+
+    <h1>Silencioso</h1>
+    <p class="subtitle">
+      Gerencie rotinas e alarmes inteligentes.<br>
+      Instale direto no Android — sem precisar de loja.
+    </p>
+
+    <div class="features">
+      <div class="feature">
+        <span class="feature-icon">⏰</span>
+        <span>Alarmes que tomam a tela e vibram até você desligar</span>
+      </div>
+      <div class="feature">
+        <span class="feature-icon">🔁</span>
+        <span>Rotinas diárias com dias da semana personalizados</span>
+      </div>
+      <div class="feature">
+        <span class="feature-icon">🌴</span>
+        <span>Modo Férias para pausar rotinas temporariamente</span>
+      </div>
+      <div class="feature">
+        <span class="feature-icon">📊</span>
+        <span>Histórico de tarefas concluídas e recusadas</span>
+      </div>
+    </div>
+
+    <a
+      href="https://github.com/felipe-spengler/Tarefas-Diarias-App/releases/download/latest/Silencioso-App.apk"
+      download="Silencioso-App.apk"
+      class="btn-download"
+    >
+      ⬇ BAIXAR APK ANDROID
+    </a>
+
+    <p class="note">
+      Compilado automaticamente via GitHub Actions a cada atualização.<br>
+      Após baixar, habilite <strong>Instalar apps desconhecidos</strong> nas configurações do Android.<br><br>
+      <a href="https://github.com/felipe-spengler/Tarefas-Diarias-App/releases" target="_blank">
+        Ver todas as versões no GitHub →
+      </a>
+    </p>
+  </div>
+</body>
+</html>
