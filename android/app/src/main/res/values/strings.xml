@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Silencioso</string>
-    <string name="title_activity_main">Silencioso</string>
+    <string name="app_name">Tasks</string>
+    <string name="title_activity_main">Tasks</string>
     <string name="package_name">com.silencioso.app</string>
     <string name="custom_url_scheme">com.silencioso.app</string>
 </resources>
