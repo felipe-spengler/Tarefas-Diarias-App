@@ -37,22 +37,22 @@ jobs:
       - name: Rename APK
         run: |
           mv android/app/build/outputs/apk/debug/app-debug.apk \
-             android/app/build/outputs/apk/debug/Silencioso-App.apk
+             android/app/build/outputs/apk/debug/Tasks.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Silencioso-App
-          path: android/app/build/outputs/apk/debug/Silencioso-App.apk
+          name: Tasks
+          path: android/app/build/outputs/apk/debug/Tasks.apk
 
       - name: Create or Update Public Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "android/app/build/outputs/apk/debug/Silencioso-App.apk"
+          artifacts: "android/app/build/outputs/apk/debug/Tasks.apk"
           tag: "latest"
-          name: "Silencioso App - Última Versão"
+          name: "Tasks App - Última Versão"
           body: |
-            ## 📱 Silencioso App
+            ## 📱 Tasks App
 
             **Build:** #${{ github.run_number }}
             **Commit:** ${{ github.sha }}
@@ -61,7 +61,7 @@ jobs:
 
             ---
             > Versão compilada automaticamente pelo GitHub Actions a cada atualização do código.
-            > Baixe o arquivo `Silencioso-App.apk` abaixo e instale no Android.
+            > Baixe o arquivo `Tasks.apk` abaixo e instale no Android.
           allowUpdates: true
           removeArtifacts: true
           replacesArtifacts: true
