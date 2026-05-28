@@ -109,6 +109,7 @@ export default function App() {
   const [copied, setCopied] = useState(false);
   const [condTargetId, setCondTargetId] = useState('');
   const [condReqId, setCondReqId] = useState('');
+  const [showPermissionPrompt, setShowPermissionPrompt] = useState(false);
 
   // Vibration and Custom Alarm Audio Settings
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
@@ -175,13 +176,37 @@ export default function App() {
   }, [tasks, history, isHolidayMode, vibrationEnabled, selectedAudioUrl]);
 
   // --- Notification Permission ---
-  useEffect(() => {
+  const checkPermissions = useCallback(async () => {
     if (Capacitor.isNativePlatform()) {
-      LocalNotifications.requestPermissions();
-    } else if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+      const status = await LocalNotifications.checkPermissions();
+      if (status.display !== 'granted') {
+        setShowPermissionPrompt(true);
+      }
+    } else if ('Notification' in window) {
+      if (Notification.permission === 'default') {
+        setShowPermissionPrompt(true);
+      }
     }
   }, []);
+
+  const requestPermissions = async () => {
+    setShowPermissionPrompt(false);
+    if (Capacitor.isNativePlatform()) {
+      const status = await LocalNotifications.requestPermissions();
+      if (status.display !== 'granted') {
+        console.log('Permissões de notificação negadas no Android.');
+      }
+    } else if ('Notification' in window) {
+      const status = await Notification.requestPermission();
+      if (status !== 'granted') {
+        console.log('Permissões de notificação negadas na Web.');
+      }
+    }
+  };
+
+  useEffect(() => {
+    checkPermissions();
+  }, [checkPermissions]);
 
   // --- Background Logic (Every 30s) ---
   const checkNotifications = useCallback(() => {
@@ -1395,6 +1420,53 @@ export default function App() {
                     className="w-full py-2 text-zinc-600 font-medium text-xs hover:text-zinc-400 transition-colors"
                   >
                     Apenas silenciar alarme (sem registrar)
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Permissão de Notificações Modal */}
+        <AnimatePresence>
+          {showPermissionPrompt && (
+            <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-black/80 backdrop-blur-md"
+              />
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="relative w-full max-w-sm bg-surface border border-zinc-800 rounded-[2rem] shadow-2xl p-6 text-center space-y-6 overflow-hidden"
+              >
+                <div className="relative w-20 h-20 rounded-3xl bg-primary-600/10 border border-primary-500/20 flex items-center justify-center mx-auto text-primary-400">
+                  <Bell size={36} className="animate-pulse" />
+                </div>
+                
+                <div className="space-y-2">
+                  <h3 className="text-xl font-bold text-white">Ativar Notificações 🔔</h3>
+                  <p className="text-xs text-zinc-400 leading-relaxed px-2">
+                    O <strong>Silencioso</strong> precisa de permissão para enviar notificações para que seus alarmes e lembretes toquem no horário exato!
+                  </p>
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <button
+                    onClick={requestPermissions}
+                    className="w-full py-4 bg-primary-600 hover:bg-primary-500 text-white font-bold rounded-2xl shadow-xl shadow-primary-950/20 transition-all active:scale-95 text-sm"
+                  >
+                    ATIVAR NOTIFICAÇÕES
+                  </button>
+                  
+                  <button
+                    onClick={() => setShowPermissionPrompt(false)}
+                    className="w-full py-2 text-zinc-500 hover:text-zinc-300 text-xs font-semibold transition-colors"
+                  >
+                    Configurar mais tarde
                   </button>
                 </div>
               </motion.div>
