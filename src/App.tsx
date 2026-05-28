@@ -1025,7 +1025,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
                         <button 
                           onClick={() => toggleTask(task.id)}
                           className={cn(
@@ -1038,14 +1038,14 @@ export default function App() {
                         </button>
                         <button 
                           onClick={() => startEdit(task)}
-                          className="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                          className="p-2 text-primary-400 bg-primary-500/10 hover:bg-primary-500/20 rounded-lg transition-colors border border-primary-500/20"
                           title="Editar alarme"
                         >
                           <Edit2 size={18} />
                         </button>
                         <button 
                           onClick={() => deleteTask(task.id)}
-                          className="p-2 text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                          className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
                           title="Excluir"
                         >
                           <Trash2 size={18} />
