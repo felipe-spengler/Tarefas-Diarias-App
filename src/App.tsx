@@ -170,6 +170,12 @@ export default function App() {
   // Vibration and Custom Alarm Audio Settings
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
   const [selectedAudioUrl, setSelectedAudioUrl] = useState('https://assets.mixkit.co/active_storage/sfx/941/941-preview.mp3');
+  const [customSoundName, setCustomSoundName] = useState<string>('');
+
+  // Preview state (audio separado do alarme real)
+  const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
+  const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const previewTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Global States
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -221,6 +227,10 @@ export default function App() {
     if (savedHoliday) setIsHolidayMode(JSON.parse(savedHoliday));
     if (savedVibration) setVibrationEnabled(JSON.parse(savedVibration));
     if (savedAudio) setSelectedAudioUrl(savedAudio);
+
+    // Carrega nome do toque personalizado se houver
+    const savedCustomName = localStorage.getItem('silent_custom_sound_name');
+    if (savedCustomName) setCustomSoundName(savedCustomName);
   }, []);
 
   useEffect(() => {
@@ -491,6 +501,59 @@ export default function App() {
     const snoozeTime = addMinutes(new Date(), 5);
     setTasks(tasks.map(t => t.id === activeAlarm.id ? { ...t, snoozedUntil: snoozeTime.toISOString() } : t));
     stopAlarm();
+  };
+
+  // --- Preview de som nas configurações ---
+  const playPreview = (url: string) => {
+    // Para preview anterior se houver
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    if (!previewAudioRef.current) previewAudioRef.current = new Audio();
+    const prev = previewAudioRef.current;
+    prev.pause();
+    prev.src = url;
+    prev.currentTime = 0;
+    prev.loop = false;
+    prev.play().catch(() => {});
+    setPreviewingUrl(url);
+    // Para automaticamente após 4 segundos
+    previewTimerRef.current = setTimeout(() => {
+      prev.pause();
+      prev.currentTime = 0;
+      setPreviewingUrl(null);
+    }, 4000);
+  };
+
+  const stopPreview = () => {
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current.currentTime = 0;
+    }
+    setPreviewingUrl(null);
+  };
+
+  // --- Upload de toque personalizado ---
+  const handleCustomAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      try {
+        localStorage.setItem('silent_audio_url', base64);
+        localStorage.setItem('silent_custom_sound_name', file.name);
+        setSelectedAudioUrl(base64);
+        setCustomSoundName(file.name);
+      } catch {
+        // Fallback se localStorage estiver cheio (arquivo muito grande)
+        const objUrl = URL.createObjectURL(file);
+        setSelectedAudioUrl(objUrl);
+        setCustomSoundName(file.name + ' (não salvo)');
+      }
+    };
+    reader.readAsDataURL(file);
+    // Limpa o input pra permitir reselecionar o mesmo arquivo
+    e.target.value = '';
   };
 
   // Mantém sendNotificationRef sempre apontando para a versão mais recente de sendNotification
@@ -1150,38 +1213,122 @@ export default function App() {
                 </div>
 
                 {/* Som do Alarme */}
-                <div className="flex flex-col gap-2.5 py-2">
+                <div className="flex flex-col gap-3 py-2">
                   <div className="space-y-0.5">
                     <h4 className="text-sm font-bold text-zinc-200">Som do Alarme</h4>
-                    <p className="text-[11px] text-zinc-500">Escolha o toque do seu alarme inteligente (toca um preview ao alterar).</p>
+                    <p className="text-[11px] text-zinc-500">Toque em ▶ para ouvir o preview antes de escolher. O alarme toca em loop até você dispensar.</p>
                   </div>
-                  <select
-                    className="w-full text-sm bg-zinc-900 border border-zinc-800 text-zinc-200 focus:border-primary-500"
-                    value={selectedAudioUrl}
-                    onChange={(e) => {
-                      const newUrl = e.target.value;
-                      setSelectedAudioUrl(newUrl);
-                      
-                      // Toca um preview curto de 2 segundos
-                      if (audio) {
-                        try {
-                          audio.src = newUrl;
-                          audio.currentTime = 0;
-                          audio.play().catch(err => console.log('Preview bloqueado pela segurança do navegador'));
-                          setTimeout(() => {
-                            try {
-                              audio.pause();
-                              audio.currentTime = 0;
-                            } catch (err) {}
-                          }, 2000);
-                        } catch (err) {}
-                      }
-                    }}
-                  >
-                    {ALARM_SOUNDS.map(sound => (
-                      <option key={sound.url} value={sound.url}>{sound.name}</option>
-                    ))}
-                  </select>
+
+                  {/* Cards de sons pré-definidos */}
+                  <div className="flex flex-col gap-2">
+                    {ALARM_SOUNDS.map(sound => {
+                      const isSelected = selectedAudioUrl === sound.url;
+                      const isPreviewing = previewingUrl === sound.url;
+                      return (
+                        <div
+                          key={sound.url}
+                          onClick={() => {
+                            setSelectedAudioUrl(sound.url);
+                            setCustomSoundName('');
+                            localStorage.removeItem('silent_custom_sound_name');
+                          }}
+                          className={cn(
+                            "flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all",
+                            isSelected
+                              ? "border-primary-500/50 bg-primary-500/10"
+                              : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
+                          )}
+                        >
+                          {/* Indicador de selecionado */}
+                          <div className={cn(
+                            "w-3.5 h-3.5 rounded-full border-2 flex-shrink-0 transition-all",
+                            isSelected ? "border-primary-400 bg-primary-400" : "border-zinc-600"
+                          )} />
+
+                          {/* Nome */}
+                          <span className={cn(
+                            "flex-1 text-xs font-medium",
+                            isSelected ? "text-primary-300" : "text-zinc-400"
+                          )}>
+                            {sound.name}
+                          </span>
+
+                          {/* Botão de preview */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isPreviewing) stopPreview();
+                              else playPreview(sound.url);
+                            }}
+                            className={cn(
+                              "p-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 flex-shrink-0",
+                              isPreviewing
+                                ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
+                                : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 border border-zinc-700"
+                            )}
+                          >
+                            {isPreviewing ? (
+                              <><span className="text-base leading-none">⏹</span> Parar</>
+                            ) : (
+                              <><span className="text-base leading-none">▶</span> Ouvir</>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    {/* Opção: toque personalizado */}
+                    <div className={cn(
+                      "flex flex-col gap-2 p-3 rounded-xl border transition-all",
+                      customSoundName
+                        ? "border-primary-500/50 bg-primary-500/10"
+                        : "border-zinc-800 bg-zinc-900/50"
+                    )}>
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "w-3.5 h-3.5 rounded-full border-2 flex-shrink-0 transition-all",
+                          customSoundName ? "border-primary-400 bg-primary-400" : "border-zinc-600"
+                        )} />
+                        <span className={cn(
+                          "flex-1 text-xs font-medium",
+                          customSoundName ? "text-primary-300" : "text-zinc-500"
+                        )}>
+                          {customSoundName ? customSoundName : 'Toque personalizado...'}
+                        </span>
+                        {customSoundName && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (previewingUrl === selectedAudioUrl) stopPreview();
+                              else playPreview(selectedAudioUrl);
+                            }}
+                            className={cn(
+                              "p-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 flex-shrink-0",
+                              previewingUrl === selectedAudioUrl
+                                ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
+                                : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 border border-zinc-700"
+                            )}
+                          >
+                            {previewingUrl === selectedAudioUrl ? (
+                              <><span className="text-base leading-none">⏹</span> Parar</>
+                            ) : (
+                              <><span className="text-base leading-none">▶</span> Ouvir</>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                      <label className="flex items-center justify-center gap-2 py-2 px-3 bg-zinc-800 hover:bg-zinc-700 border border-dashed border-zinc-600 hover:border-primary-500/50 rounded-lg cursor-pointer transition-all text-xs text-zinc-400 hover:text-zinc-200">
+                        <span className="text-lg leading-none">📂</span>
+                        Escolher arquivo (MP3, OGG, WAV)
+                        <input
+                          type="file"
+                          accept="audio/*"
+                          className="hidden"
+                          onChange={handleCustomAudioUpload}
+                        />
+                      </label>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
