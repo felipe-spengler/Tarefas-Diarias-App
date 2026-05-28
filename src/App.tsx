@@ -177,30 +177,38 @@ export default function App() {
 
   // --- Notification Permission ---
   const checkPermissions = useCallback(async () => {
-    if (Capacitor.isNativePlatform()) {
-      const status = await LocalNotifications.checkPermissions();
-      if (status.display !== 'granted') {
-        setShowPermissionPrompt(true);
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const status = await LocalNotifications.checkPermissions();
+        if (status.display !== 'granted') {
+          setShowPermissionPrompt(true);
+        }
+      } else if (typeof Notification !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'default') {
+          setShowPermissionPrompt(true);
+        }
       }
-    } else if ('Notification' in window) {
-      if (Notification.permission === 'default') {
-        setShowPermissionPrompt(true);
-      }
+    } catch (e) {
+      console.warn('Erro ao verificar permissões de notificação:', e);
     }
   }, []);
 
   const requestPermissions = async () => {
     setShowPermissionPrompt(false);
-    if (Capacitor.isNativePlatform()) {
-      const status = await LocalNotifications.requestPermissions();
-      if (status.display !== 'granted') {
-        console.log('Permissões de notificação negadas no Android.');
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const status = await LocalNotifications.requestPermissions();
+        if (status.display !== 'granted') {
+          console.log('Permissões de notificação negadas no Android.');
+        }
+      } else if (typeof Notification !== 'undefined' && 'Notification' in window && typeof Notification.requestPermission === 'function') {
+        const status = await Notification.requestPermission();
+        if (status !== 'granted') {
+          console.log('Permissões de notificação negadas na Web.');
+        }
       }
-    } else if ('Notification' in window) {
-      const status = await Notification.requestPermission();
-      if (status !== 'granted') {
-        console.log('Permissões de notificação negadas na Web.');
-      }
+    } catch (e) {
+      console.warn('Erro ao solicitar permissões de notificação:', e);
     }
   };
 
@@ -341,16 +349,28 @@ export default function App() {
       });
     } else {
       // Web Notifications
-      if ('Notification' in window && Notification.permission === 'granted') {
-        const notifOptions: any = {
-          body: message,
-          icon: '/vite.svg',
-          requireInteraction: true,
-        };
-        if (vibrationEnabled) {
-          notifOptions.vibrate = [500, 100, 500, 100, 500];
+      try {
+        if (typeof Notification !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          const notifOptions: any = {
+            body: message,
+            icon: '/app_icon.png',
+            requireInteraction: true,
+          };
+          if (vibrationEnabled) {
+            notifOptions.vibrate = [500, 100, 500, 100, 500];
+          }
+          try {
+            new Notification('Alarme Silencioso', notifOptions);
+          } catch (err) {
+            console.warn('Standard Notification constructor failed on mobile, attempting service worker:', err);
+            if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+              const reg = await navigator.serviceWorker.ready;
+              reg.showNotification('Alarme Silencioso', notifOptions);
+            }
+          }
         }
-        new Notification('Alarme Silencioso', notifOptions);
+      } catch (e) {
+        console.warn('Erro ao enviar notificação Web:', e);
       }
     }
   };
