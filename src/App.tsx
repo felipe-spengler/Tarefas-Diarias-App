@@ -178,6 +178,17 @@ export default function App() {
   const [condTargetId, setCondTargetId] = useState('');
   const [condReqId, setCondReqId] = useState('');
   const [showPermissionPrompt, setShowPermissionPrompt] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  
+  const addDebugLog = useCallback((msg: string) => {
+    const time = format(new Date(), 'HH:mm:ss');
+    setDebugLogs(prev => {
+      const updated = [`[${time}] ${msg}`, ...prev].slice(0, 50);
+      localStorage.setItem('silent_debug_logs', JSON.stringify(updated));
+      return updated;
+    });
+    console.log(`[Diagnostic] ${msg}`);
+  }, []);
 
   // Vibration and Custom Alarm Audio Settings
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
@@ -310,6 +321,9 @@ export default function App() {
     // Carrega nome do toque personalizado se houver
     const savedCustomName = localStorage.getItem('silent_custom_sound_name');
     if (savedCustomName) setCustomSoundName(savedCustomName);
+
+    const savedLogs = localStorage.getItem('silent_debug_logs');
+    if (savedLogs) setDebugLogs(JSON.parse(savedLogs));
   }, []);
 
   useEffect(() => {
@@ -419,20 +433,28 @@ export default function App() {
   const scheduleNativeAlarmsForTasks = useCallback(async (taskList: Task[]) => {
     if (!Capacitor.isNativePlatform()) return;
     try {
+      addDebugLog("Iniciando agendamento nativo...");
+      
       // Cancela agendamentos anteriores (exceto o widget persistente id=999)
       const pending = await LocalNotifications.getPending();
       const toCancel = pending.notifications
         .filter(n => n.id !== 999)
         .map(n => ({ id: n.id }));
+        
+      addDebugLog(`Pendentes encontrados para limpar: ${toCancel.length}`);
       if (toCancel.length > 0) {
         await LocalNotifications.cancel({ notifications: toCancel });
+        addDebugLog("Limpeza de alarmes anteriores concluída.");
       }
 
       const now = new Date();
       const toSchedule: any[] = [];
 
       for (const task of taskList) {
-        if (!task.isActive) continue;
+        if (!task.isActive) {
+          addDebugLog(`Ignorando "${task.title}": inativa.`);
+          continue;
+        }
 
         const nextOcc = getNextOccurrence(task, now);
         let notifTime = addMinutes(nextOcc, -task.advanceMinutes);
@@ -445,10 +467,12 @@ export default function App() {
         if (notifTime <= now && nextOcc > now) {
           notifTime = nextOcc;
           advMsg = `⏰ É hora de: ${task.title}`;
+          addDebugLog(`[Fallback] "${task.title}" antecedência no passado. Agendando no horário real: ${format(notifTime, 'HH:mm')}`);
         }
 
         // Agenda apenas no futuro
         if (notifTime > now) {
+          addDebugLog(`Agendando "${task.title}" para ${format(notifTime, 'yyyy-MM-dd HH:mm:ss')}`);
           toSchedule.push({
             title: `⏰ ${task.title}`,
             body: advMsg,
@@ -457,16 +481,33 @@ export default function App() {
             channelId: 'alarm',
             extra: { taskId: task.id },
           });
+        } else {
+          addDebugLog(`Descartando "${task.title}": horário calculado no passado (${format(notifTime, 'yyyy-MM-dd HH:mm:ss')}).`);
         }
       }
 
       if (toSchedule.length > 0) {
-        await LocalNotifications.schedule({ notifications: toSchedule });
+        try {
+          await LocalNotifications.schedule({ notifications: toSchedule });
+          addDebugLog(`SUCESSO: ${toSchedule.length} alarmes agendados com precisão.`);
+        } catch (err: any) {
+          addDebugLog(`SecurityException/Erro ao agendar com precisão: ${err?.message || err}. Tentando em modo de segurança...`);
+          // Fallback de segurança: agenda sem allowWhileIdle (evita falha catastrófica se permissão de Exact Alarm faltar)
+          const fallbackSchedule = toSchedule.map(n => ({
+            ...n,
+            schedule: { at: n.schedule.at } // remove allowWhileIdle
+          }));
+          await LocalNotifications.schedule({ notifications: fallbackSchedule });
+          addDebugLog(`SUCESSO (modo de segurança): ${fallbackSchedule.length} alarmes agendados.`);
+        }
+      } else {
+        addDebugLog("Nenhum alarme elegível para agendar.");
       }
-    } catch (e) {
+    } catch (e: any) {
+      addDebugLog(`FALHA CATASTRÓFICA no agendamento: ${e?.message || e}`);
       console.warn('Erro ao agendar alarmes nativos:', e);
     }
-  }, []);
+  }, [addDebugLog]);
 
   // Re-agenda sempre que as tarefas mudarem
   useEffect(() => {
@@ -1875,6 +1916,51 @@ export default function App() {
                     </p>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Painel de Diagnóstico de Agendamento */}
+            <div className="glass p-6 rounded-[2rem] border border-zinc-800 space-y-4 shadow-xl">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-primary-400 flex items-center justify-between">
+                <span>🩺 Painel de Diagnóstico</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.removeItem('silent_debug_logs');
+                      setDebugLogs([]);
+                    }}
+                    className="px-2.5 py-1 text-[9px] bg-zinc-800 hover:bg-zinc-700 text-zinc-400 font-bold rounded-lg border border-zinc-700 transition-all"
+                  >
+                    Limpar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addDebugLog("Forçando re-agendamento manual...");
+                      scheduleNativeAlarmsForTasks(tasks);
+                    }}
+                    className="px-2.5 py-1 text-[9px] bg-primary-600/20 hover:bg-primary-600/35 text-primary-400 font-bold rounded-lg border border-primary-500/20 transition-all"
+                  >
+                    Diagnosticar
+                  </button>
+                </div>
+              </h3>
+              
+              <p className="text-xs text-zinc-500 leading-normal">
+                Veja o histórico exato de cálculos e chamadas da API de alarmes do Capacitor no seu aparelho.
+              </p>
+
+              <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-900 font-mono text-[10px] text-zinc-400 space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {debugLogs.length === 0 ? (
+                  <p className="text-zinc-600 italic">Nenhum log gerado no momento. Use o botão "Diagnosticar" para iniciar.</p>
+                ) : (
+                  debugLogs.map((log, idx) => (
+                    <div key={idx} className="leading-relaxed border-b border-zinc-900/40 pb-1 last:border-0 truncate" title={log}>
+                      {log}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </motion.div>
