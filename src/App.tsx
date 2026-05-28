@@ -931,7 +931,7 @@ export default function App() {
             <header className="flex items-center justify-between mb-8">
               <div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-400 to-primary-600 bg-clip-text text-transparent">
-                  Barulhento
+                  Tasks
                 </h1>
                 <div className="flex items-center gap-3 mt-1">
                   <p className="text-zinc-500 text-sm">Gerencie seu tempo com inteligência.</p>
@@ -2171,7 +2171,7 @@ export default function App() {
                 <div className="space-y-2">
                   <h3 className="text-xl font-bold text-white">Ativar Notificações 🔔</h3>
                   <p className="text-xs text-zinc-400 leading-relaxed px-2">
-                    O <strong>Barulhento</strong> precisa de permissão para enviar notificações para que seus alarmes e lembretes toquem no horário exato!
+                    O <strong>Tasks</strong> precisa de permissão para enviar notificações para que seus alarmes e lembretes toquem no horário exato!
                   </p>
                 </div>
 
