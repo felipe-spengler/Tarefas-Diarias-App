@@ -238,22 +238,36 @@ export default function App() {
     };
   }, [audio]);
 
-  // Vibração contínua enquanto alarme estiver ativo
+  // Quando activeAlarm é definido (de QUALQUER caminho: polling, listener, tap na notificação)
+  // → inicia áudio em loop + vibração contínua
   useEffect(() => {
-    if (!activeAlarm || !vibrationEnabled) return;
-    // Padrão: 800ms ON, 400ms OFF repetindo
-    const vibrate = () => {
-      if ('vibrate' in navigator) {
-        navigator.vibrate([800, 400, 800, 400, 800, 400, 800, 400, 800]);
-      }
-    };
-    vibrate();
-    const vibrateInterval = setInterval(vibrate, 6000);
-    return () => {
-      clearInterval(vibrateInterval);
-      if ('vibrate' in navigator) navigator.vibrate(0);
-    };
-  }, [activeAlarm, vibrationEnabled]);
+    if (!activeAlarm) return;
+
+    // Inicia áudio com retry (autoplay pode estar bloqueado na 1ª tentativa)
+    if (audio) {
+      audio.currentTime = 0;
+      audio.loop = true;
+      const tryPlay = (attempts = 0) => {
+        audio.play().catch(() => {
+          if (attempts < 8) setTimeout(() => tryPlay(attempts + 1), 700);
+        });
+      };
+      tryPlay();
+    }
+
+    // Vibração contínua: 800ms ON / 400ms OFF
+    if (vibrationEnabled) {
+      const vibrate = () => {
+        if ('vibrate' in navigator) navigator.vibrate([800, 400, 800, 400, 800, 400, 800, 400, 800]);
+      };
+      vibrate();
+      const vibrateInterval = setInterval(vibrate, 6000);
+      return () => {
+        clearInterval(vibrateInterval);
+        if ('vibrate' in navigator) navigator.vibrate(0);
+      };
+    }
+  }, [activeAlarm, audio, vibrationEnabled]);
 
   // WakeLock: mantém tela acesa durante o alarme
   useEffect(() => {
@@ -585,35 +599,20 @@ export default function App() {
       : `às ${task.time}`;
     const message = `⏰ ${task.title} - ${advMsg}`;
     
-    // Mostra overlay fullscreen de alarme
+    // Mostra overlay fullscreen → o useEffect do activeAlarm cuida do áudio e vibração
     setActiveAlarm(task);
-    
-    // Toca o áudio em loop — com retry caso ainda bloqueado pelo autoplay
-    if (audio) {
-      audio.currentTime = 0;
-      audio.loop = true;
-      const tryPlay = (attempts = 0) => {
-        audio.play().catch(() => {
-          if (attempts < 5) setTimeout(() => tryPlay(attempts + 1), 800);
-        });
-      };
-      tryPlay();
-    }
 
     // Native Capacitor (APK Android)
     if (Capacitor.isNativePlatform()) {
-      if (vibrationEnabled) {
-        Haptics.impact({ style: ImpactStyle.Heavy });
-      }
-      // A notificação nativa exata já foi agendada em scheduleNativeAlarmsForTasks.
-      // Aqui dispara uma notificação imediata extra (fallback) com canal alarm.
+      if (vibrationEnabled) Haptics.impact({ style: ImpactStyle.Heavy });
+      // Fallback imediato (a notif agendada já foi disparada pelo Android)
       await LocalNotifications.schedule({
         notifications: [{
           title: `⏰ ${task.title}`,
           body: message,
-          id: taskToNotifId(task.id) + 1000000, // ID diferente do agendado
+          id: taskToNotifId(task.id) + 1000000,
           schedule: { at: new Date(Date.now() + 100) },
-          channelId: 'alarm', // canal de alta prioridade (sem alarm.wav inexistente)
+          channelId: 'alarm',
           extra: { taskId: task.id },
           attachments: [],
           extra2: null
@@ -627,11 +626,7 @@ export default function App() {
       // Web Notification (sistema)
       try {
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          const notifOptions: any = {
-            body: message,
-            icon: '/app_icon.png',
-            requireInteraction: true,
-          };
+          const notifOptions: any = { body: message, icon: '/app_icon.png', requireInteraction: true };
           try {
             new Notification('⏰ Alarme Silencioso', notifOptions);
           } catch {
