@@ -193,6 +193,9 @@ export default function App() {
 
   // Alarm State
   const [activeAlarm, setActiveAlarm] = useState<Task | null>(null);
+  const wakeLockRef = React.useRef<any>(null);
+  const audioUnlockedRef = React.useRef(false);
+
   const [audio] = useState<HTMLAudioElement | null>(() => {
     try {
       return new Audio('https://assets.mixkit.co/active_storage/sfx/941/941-preview.mp3');
@@ -207,6 +210,56 @@ export default function App() {
       audio.loop = true;
     }
   }, [audio]);
+
+  // Desbloqueia o audio no primeiro toque (política de autoplay do browser)
+  useEffect(() => {
+    const unlock = () => {
+      if (!audioUnlockedRef.current && audio) {
+        audio.play()
+          .then(() => { audio.pause(); audio.currentTime = 0; audioUnlockedRef.current = true; })
+          .catch(() => {});
+      }
+    };
+    document.addEventListener('touchstart', unlock, { once: true });
+    document.addEventListener('click', unlock, { once: true });
+    return () => {
+      document.removeEventListener('touchstart', unlock);
+      document.removeEventListener('click', unlock);
+    };
+  }, [audio]);
+
+  // Vibração contínua enquanto alarme estiver ativo
+  useEffect(() => {
+    if (!activeAlarm || !vibrationEnabled) return;
+    // Padrão: 800ms ON, 400ms OFF repetindo
+    const vibrate = () => {
+      if ('vibrate' in navigator) {
+        navigator.vibrate([800, 400, 800, 400, 800, 400, 800, 400, 800]);
+      }
+    };
+    vibrate();
+    const vibrateInterval = setInterval(vibrate, 6000);
+    return () => {
+      clearInterval(vibrateInterval);
+      if ('vibrate' in navigator) navigator.vibrate(0);
+    };
+  }, [activeAlarm, vibrationEnabled]);
+
+  // WakeLock: mantém tela acesa durante o alarme
+  useEffect(() => {
+    if (activeAlarm) {
+      if ('wakeLock' in navigator) {
+        (navigator as any).wakeLock.request('screen')
+          .then((lock: any) => { wakeLockRef.current = lock; })
+          .catch(() => {});
+      }
+    } else {
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    }
+  }, [activeAlarm]);
 
   useEffect(() => {
     if (audio) {
@@ -412,13 +465,27 @@ export default function App() {
   }, [updatePersistentWidget]);
 
   const sendNotification = async (task: Task) => {
-    const message = `Sua tarefa "${task.title}" inicia em ${task.advanceMinutes} minutos (às ${task.time}).`;
+    const advMsg = task.advanceMinutes > 0
+      ? `em ${task.advanceMinutes} min (às ${task.time})`
+      : `às ${task.time}`;
+    const message = `⏰ ${task.title} - ${advMsg}`;
     
-    // Trigger Alarm UI and Sound
+    // Mostra overlay fullscreen de alarme
     setActiveAlarm(task);
-    audio.play().catch(e => console.log('Audio blocked until interaction'));
+    
+    // Toca o áudio em loop — com retry caso ainda bloqueado
+    if (audio) {
+      audio.currentTime = 0;
+      audio.loop = true;
+      const tryPlay = (attempts = 0) => {
+        audio.play().catch(() => {
+          if (attempts < 5) setTimeout(() => tryPlay(attempts + 1), 800);
+        });
+      };
+      tryPlay();
+    }
 
-    // Native Capacitor Notifications
+    // Native Capacitor (APK Android)
     if (Capacitor.isNativePlatform()) {
       if (vibrationEnabled) {
         Haptics.impact({ style: ImpactStyle.Heavy });
@@ -426,7 +493,7 @@ export default function App() {
       await LocalNotifications.schedule({
         notifications: [
           {
-            title: 'Alarme Silencioso',
+            title: '⏰ Alarme Silencioso',
             body: message,
             id: Math.floor(Math.random() * 10000),
             schedule: { at: new Date(Date.now() + 100) },
@@ -437,7 +504,11 @@ export default function App() {
         ]
       });
     } else {
-      // Web Notifications
+      // Web: vibração via Web API
+      if (vibrationEnabled && 'vibrate' in navigator) {
+        navigator.vibrate([800, 400, 800, 400, 800]);
+      }
+      // Web Notification (sistema)
       try {
         if (typeof Notification !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           const notifOptions: any = {
@@ -445,16 +516,12 @@ export default function App() {
             icon: '/app_icon.png',
             requireInteraction: true,
           };
-          if (vibrationEnabled) {
-            notifOptions.vibrate = [500, 100, 500, 100, 500];
-          }
           try {
-            new Notification('Alarme Silencioso', notifOptions);
+            new Notification('⏰ Alarme Silencioso', notifOptions);
           } catch (err) {
-            console.warn('Standard Notification constructor failed on mobile, attempting service worker:', err);
             if (navigator.serviceWorker && navigator.serviceWorker.ready) {
               const reg = await navigator.serviceWorker.ready;
-              reg.showNotification('Alarme Silencioso', notifOptions);
+              reg.showNotification('⏰ Alarme Silencioso', notifOptions);
             }
           }
         }
@@ -465,8 +532,14 @@ export default function App() {
   };
 
   const stopAlarm = () => {
-    audio.pause();
-    audio.currentTime = 0;
+    if (audio) { audio.pause(); audio.currentTime = 0; }
+    // Para vibração imediatamente
+    if ('vibrate' in navigator) navigator.vibrate(0);
+    // Libera WakeLock
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release().catch(() => {});
+      wakeLockRef.current = null;
+    }
     setActiveAlarm(null);
   };
 
