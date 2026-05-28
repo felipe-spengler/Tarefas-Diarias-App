@@ -19,7 +19,8 @@ import {
   Check,
   Info,
   Sliders,
-  Sparkles
+  Sparkles,
+  MoreVertical
 } from 'lucide-react';
 import { format, addMinutes, isSameDay, parseISO, isValid, isBefore } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -171,7 +172,9 @@ export default function App() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   // Global Navigation & Feedback States
-  const [currentTab, setCurrentTab] = useState<'tasks' | 'conditions' | 'history' | 'install'>('tasks');
+  const [currentTab, setCurrentTab] = useState<'tasks' | 'timeline' | 'conditions' | 'history' | 'install'>('tasks');
+  const [selectedTimelineDate, setSelectedTimelineDate] = useState<Date>(new Date());
+  const [selectedTaskActionsId, setSelectedTaskActionsId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [condTargetId, setCondTargetId] = useState('');
   const [condReqId, setCondReqId] = useState('');
@@ -876,8 +879,44 @@ export default function App() {
   const mostFrequentCategoryKey = Object.keys(categoryCounts).sort((a, b) => categoryCounts[b] - categoryCounts[a])[0];
   const mostFrequentCategory = mostFrequentCategoryKey ? CATEGORIES[mostFrequentCategoryKey as keyof typeof CATEGORIES]?.label : 'Nenhuma';
 
+  // --- GERADORES DA LINHA DO TEMPO (TIMELINE) ---
+  const timelineDays = React.useMemo(() => {
+    const dates = [];
+    const today = new Date();
+    // Gera 7 dias em volta de hoje (2 dias atrás, hoje, 4 dias adiante)
+    for (let i = -2; i <= 4; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      dates.push(d);
+    }
+    return dates;
+  }, []);
+
+  const timelineTasksForSelectedDay = React.useMemo(() => {
+    const dayOfWeek = selectedTimelineDate.getDay() as DayOfWeek;
+    const dateString = format(selectedTimelineDate, 'yyyy-MM-dd');
+    
+    return tasks.filter(task => {
+      if (!task.isActive) return false;
+      if (task.type === 'routine') {
+        if (isHolidayMode) return false; // Modo férias silencia rotinas
+        return !task.weekdays || task.weekdays.length === 0 || task.weekdays.includes(dayOfWeek);
+      } else {
+        return task.date === dateString;
+      }
+    }).sort((a, b) => a.time.localeCompare(b.time));
+  }, [tasks, selectedTimelineDate, isHolidayMode]);
+
+  const getTimelineStatus = (taskId: string, dayDate: Date) => {
+    const record = history.find(h => 
+      h.taskId === taskId && 
+      isSameDay(parseISO(h.completedAt), dayDate)
+    );
+    return record?.status; // 'completed' | 'declined' | undefined
+  };
+
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8 flex justify-center pb-28">
+    <div className="min-h-screen bg-background p-4 md:p-8 flex justify-center pb-[calc(env(safe-area-inset-bottom,16px)+110px)]">
       <div className="w-full max-w-2xl">
         
         {/* --- ABA 1: TAREFAS --- */}
@@ -892,7 +931,7 @@ export default function App() {
             <header className="flex items-center justify-between mb-8">
               <div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-400 to-primary-600 bg-clip-text text-transparent">
-                  Silencioso
+                  Barulhento
                 </h1>
                 <div className="flex items-center gap-3 mt-1">
                   <p className="text-zinc-500 text-sm">Gerencie seu tempo com inteligência.</p>
@@ -960,143 +999,357 @@ export default function App() {
                   </motion.div>
                 )}
 
-                {sortedTasks.map((task) => (
-                  <motion.div
-                    key={task.id}
-                    layout
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
+                {sortedTasks.map((task) => {
+                  const isMenuOpen = selectedTaskActionsId === task.id;
+                  let pressTimer: any = null;
+                  
+                  const handleStart = () => {
+                    pressTimer = setTimeout(() => {
+                      try {
+                        Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
+                      } catch (e) {}
+                      setSelectedTaskActionsId(task.id);
+                    }, 500);
+                  };
+                  
+                  const handleEnd = () => {
+                    if (pressTimer) clearTimeout(pressTimer);
+                  };
+
+                  return (
+                    <motion.div
+                      key={task.id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.97 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.97 }}
+                      onTouchStart={handleStart}
+                      onTouchEnd={handleEnd}
+                      onMouseDown={handleStart}
+                      onMouseUp={handleEnd}
+                      onMouseLeave={handleEnd}
+                      className={cn(
+                        "glass p-3.5 pl-4 pr-3 rounded-2xl flex flex-col gap-2 group transition-all relative overflow-hidden select-none cursor-pointer",
+                        (!task.isActive || (isHolidayMode && task.type === 'routine')) && "opacity-50 grayscale-[0.3]"
+                      )}
+                    >
+                      {/* Category accent bar */}
+                      <div className={cn("absolute left-0 top-0 bottom-0 w-1", CATEGORIES[task.category].color)} />
+
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="p-2 rounded-lg bg-zinc-800/50 text-zinc-400 flex-shrink-0">
+                            {task.type === 'routine' ? <RotateCcw size={16} /> : <Calendar size={16} />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-semibold text-sm text-zinc-100 truncate max-w-[150px] sm:max-w-xs">{task.title}</h3>
+                              <span className={cn("text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase", CATEGORIES[task.category].color, "bg-opacity-20", CATEGORIES[task.category].text)}>
+                                {CATEGORIES[task.category].label}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5 flex-wrap">
+                              <span className="flex items-center gap-1 font-mono text-zinc-300">
+                                <Clock size={10} /> {task.time}
+                              </span>
+                              {task.type === 'routine' ? (
+                                <span className="flex gap-0.5">
+                                  {DAYS.map(d => (
+                                    <span 
+                                      key={d.value}
+                                      className={cn(
+                                        "w-3.5 h-3.5 flex items-center justify-center rounded-[2px] text-[8px]",
+                                        task.weekdays?.includes(d.value as DayOfWeek) ? "bg-zinc-700 text-zinc-300 font-bold" : "text-zinc-800"
+                                      )}
+                                    >
+                                      {d.label}
+                                    </span>
+                                  ))}
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 uppercase text-[9px]">
+                                  <Calendar size={10} /> {task.date && format(parseISO(task.date), 'dd MMM', { locale: ptBR })}
+                                </span>
+                              )}
+                              <span className="flex items-center gap-0.5 text-primary-400">
+                                <Bell size={10} /> -{task.advanceMinutes}m
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Right side: Three dots menu trigger */}
+                        <div className="flex items-center gap-1.5 flex-shrink-0 z-10">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTaskActionsId(isMenuOpen ? null : task.id);
+                            }}
+                            className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-zinc-300 transition-colors"
+                            title="Ações"
+                          >
+                            <MoreVertical size={16} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Snooze/Dependency Condition (if any) */}
+                      {task.dependencyId && (
+                        <div className="flex items-center gap-1 text-[9px] text-zinc-500 italic pl-9">
+                          <Sliders size={8} className="text-primary-400" />
+                          <span>
+                            Depende de: <strong className="text-zinc-400">"{tasks.find(t => t.id === task.dependencyId)?.title}"</strong>
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Manual conclusion status/actions */}
+                      {task.isActive && (!isHolidayMode || task.type !== 'routine') && (() => {
+                        const todayRecord = history.find(h =>
+                          h.taskId === task.id &&
+                          (() => { try { return isSameDay(parseISO(h.completedAt), new Date()); } catch { return false; } })()
+                        );
+                        if (todayRecord) {
+                          return (
+                            <div className="pt-2 border-t border-zinc-800/30 flex items-center justify-between text-[11px] mt-0.5">
+                              <span className="text-zinc-500 font-medium">Hoje:</span>
+                              <span className={cn(
+                                "px-2 py-0.5 rounded-lg font-bold flex items-center gap-1 text-[10px]",
+                                todayRecord.status === 'completed'
+                                  ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                                  : "bg-red-500/10 text-red-400 border border-red-500/20"
+                              )}>
+                                {todayRecord.status === 'completed' ? <><CheckCircle2 size={10} /> Feito</> : <><X size={10} /> Não fiz</>}
+                              </span>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="pt-2 border-t border-zinc-800/30 flex items-center justify-between text-[11px] mt-0.5">
+                            <span className="text-zinc-500 font-medium">Hoje:</span>
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); completeTask(task); }}
+                                className="px-2 py-1 bg-green-500/10 hover:bg-green-500/25 text-green-400 font-bold rounded-lg border border-green-500/20 transition-all flex items-center gap-1 active:scale-95 text-[10px]"
+                              >
+                                <CheckCircle2 size={10} /> Feito
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); declineTask(task); }}
+                                className="px-2 py-1 bg-red-500/10 hover:bg-red-500/25 text-red-400 font-bold rounded-lg border border-red-500/20 transition-all flex items-center gap-1 active:scale-95 text-[10px]"
+                              >
+                                <X size={10} /> Não fiz
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* --- ABSOLUTE QUICK ACTIONS SLIDE-OVER --- */}
+                      <AnimatePresence>
+                        {isMenuOpen && (
+                          <motion.div
+                            initial={{ x: '100%' }}
+                            animate={{ x: 0 }}
+                            exit={{ x: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute inset-y-0 right-0 left-0 bg-zinc-950/95 backdrop-blur-md z-20 flex items-center justify-between pl-4 pr-3 border-l border-zinc-800"
+                          >
+                            <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider truncate max-w-[80px]">
+                              {task.title}
+                            </span>
+                            
+                            <div className="flex items-center gap-1">
+                              {/* Toggle Active */}
+                              <button
+                                onClick={() => {
+                                  toggleTask(task.id);
+                                  setSelectedTaskActionsId(null);
+                                }}
+                                className={cn(
+                                  "px-2.5 py-1.5 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1",
+                                  task.isActive ? "bg-green-500/15 text-green-400 border border-green-500/20" : "bg-zinc-800 text-zinc-500"
+                                )}
+                              >
+                                {task.isActive ? <CheckCircle2 size={12} /> : <BellOff size={12} />}
+                                {task.isActive ? 'Ativo' : 'Inativo'}
+                              </button>
+
+                              {/* Edit */}
+                              <button
+                                onClick={() => {
+                                  startEdit(task);
+                                  setSelectedTaskActionsId(null);
+                                }}
+                                className="p-2 text-primary-400 bg-primary-500/10 hover:bg-primary-500/20 rounded-xl transition-colors border border-primary-500/20"
+                                title="Editar"
+                              >
+                                <Edit2 size={14} />
+                              </button>
+
+                              {/* Delete */}
+                              <button
+                                onClick={() => {
+                                  deleteTask(task.id);
+                                  setSelectedTaskActionsId(null);
+                                }}
+                                className="p-2 text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-xl transition-colors border border-red-500/20"
+                                title="Excluir"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+
+                              {/* Close actions */}
+                              <button
+                                onClick={() => setSelectedTaskActionsId(null)}
+                                className="p-2 hover:bg-zinc-800 rounded-xl text-zinc-400 transition-colors ml-1"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+
+        {/* --- ABA NEW: LINHA DO TEMPO (TIMELINE) --- */}
+        {currentTab === 'timeline' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-6"
+          >
+            {/* Header */}
+            <header className="mb-6 flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <Calendar className="text-primary-500" size={24} /> Linha do Tempo
+                </h2>
+                <p className="text-zinc-500 text-sm mt-1">Acompanhe a sequência dos alarmes do dia.</p>
+              </div>
+            </header>
+
+            {/* Horizontal Date Selector */}
+            <div className="flex gap-2.5 overflow-x-auto pb-3 pt-1 scrollbar-thin px-1">
+              {timelineDays.map((dayDate) => {
+                const isSelected = isSameDay(dayDate, selectedTimelineDate);
+                const isToday = isSameDay(dayDate, new Date());
+                const dayLabel = format(dayDate, 'EEE', { locale: ptBR }).replace('.', '');
+                const dayNum = format(dayDate, 'dd');
+
+                return (
+                  <button
+                    key={dayDate.toISOString()}
+                    onClick={() => setSelectedTimelineDate(dayDate)}
                     className={cn(
-                      "glass p-5 rounded-2xl flex flex-col gap-3 group transition-all relative overflow-hidden",
-                      (!task.isActive || (isHolidayMode && task.type === 'routine')) && "opacity-40 grayscale-[0.5]"
+                      "flex-shrink-0 flex flex-col items-center justify-center w-14 h-18 rounded-2xl border transition-all active:scale-95",
+                      isSelected
+                        ? "bg-primary-600 border-primary-500 text-white shadow-lg shadow-primary-900/20"
+                        : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700"
                     )}
                   >
-                    {/* Category accent bar */}
-                    <div className={cn("absolute left-0 top-0 bottom-0 w-1", CATEGORIES[task.category].color)} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider mb-1">{dayLabel}</span>
+                    <span className="text-lg font-black">{dayNum}</span>
+                    {isToday && (
+                      <span className={cn("w-1.5 h-1.5 rounded-full mt-1", isSelected ? "bg-white" : "bg-primary-500")} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
 
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-4">
-                        <div className="p-3 rounded-xl bg-zinc-800/50 text-zinc-400">
-                          {task.type === 'routine' ? <RotateCcw size={20} /> : <Calendar size={20} />}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-zinc-100">{task.title}</h3>
-                            <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase", CATEGORIES[task.category].color, "bg-opacity-20", CATEGORIES[task.category].text)}>
+            {/* Selected Date Header */}
+            <div className="text-center py-2 border-y border-zinc-900/50 bg-zinc-950/20 rounded-xl my-2">
+              <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                {format(selectedTimelineDate, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+              </span>
+            </div>
+
+            {/* Timeline Task Sequence */}
+            <div className="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-zinc-800">
+              {timelineTasksForSelectedDay.length === 0 ? (
+                <div className="text-center py-16 text-zinc-600 space-y-2 pr-6">
+                  <Calendar size={40} className="mx-auto opacity-15" />
+                  <p className="text-xs italic">Nenhum alarme ativo programado para este dia.</p>
+                </div>
+              ) : (
+                timelineTasksForSelectedDay.map((task) => {
+                  const status = getTimelineStatus(task.id, selectedTimelineDate);
+                  const isToday = isSameDay(selectedTimelineDate, new Date());
+                  const isFutureDay = !isToday && selectedTimelineDate > new Date();
+                  const isPastDay = !isToday && selectedTimelineDate < new Date();
+                  
+                  return (
+                    <div key={task.id} className="relative flex flex-col gap-2">
+                      {/* Timeline Dot Icon */}
+                      <span className={cn(
+                        "absolute left-[-21px] top-1.5 w-3 h-3 rounded-full border-2 border-background z-10 transition-all",
+                        status === 'completed' ? "bg-green-500" :
+                        status === 'declined' ? "bg-red-500" :
+                        CATEGORIES[task.category].color
+                      )} />
+
+                      <div className="glass p-3 rounded-xl border border-zinc-800 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <span className="text-sm font-mono font-bold text-primary-400 bg-primary-950/40 border border-primary-900/30 px-2 py-0.5 rounded-lg">
+                            {task.time}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-sm font-bold text-zinc-100 truncate">{task.title}</h4>
+                            <span className={cn("text-[8px] px-1 py-0 rounded-full font-bold uppercase inline-block mt-0.5", CATEGORIES[task.category].color, "bg-opacity-20", CATEGORIES[task.category].text)}>
                               {CATEGORIES[task.category].label}
                             </span>
                           </div>
-                          <div className="flex items-center gap-3 text-xs text-zinc-500 mt-1">
-                            <span className="flex items-center gap-1 font-mono text-zinc-300">
-                              <Clock size={12} /> {task.time}
+                        </div>
+
+                        {/* Status Indicator / Quick Action */}
+                        <div className="flex-shrink-0">
+                          {status === 'completed' ? (
+                            <span className="text-[10px] font-bold text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-1 rounded-lg flex items-center gap-1">
+                              <CheckCircle2 size={10} /> Feito
                             </span>
-                            {task.type === 'routine' ? (
-                              <span className="flex gap-1">
-                                {DAYS.map(d => (
-                                  <span 
-                                    key={d.value}
-                                    className={cn(
-                                      "w-4 h-4 flex items-center justify-center rounded-[2px] text-[9px]",
-                                      task.weekdays?.includes(d.value as DayOfWeek) ? "bg-zinc-700 text-zinc-300" : "text-zinc-800"
-                                    )}
-                                  >
-                                    {d.label}
-                                  </span>
-                                ))}
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1 uppercase text-[10px]">
-                                <Calendar size={12} /> {task.date && format(parseISO(task.date), 'dd MMM', { locale: ptBR })}
-                              </span>
-                            )}
-                            <span className="flex items-center gap-1 text-primary-400">
-                              <Bell size={12} /> -{task.advanceMinutes}m
+                          ) : status === 'declined' ? (
+                            <span className="text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-1 rounded-lg flex items-center gap-1">
+                              <X size={10} /> Não fiz
                             </span>
-                          </div>
-                          {task.dependencyId && (
-                            <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-zinc-500 italic">
-                              <Sliders size={10} className="text-primary-400" />
-                              <span>
-                                Depende de: <strong className="text-zinc-400">"{tasks.find(t => t.id === task.dependencyId)?.title}"</strong>
-                              </span>
+                          ) : isToday ? (
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => completeTask(task)}
+                                className="px-2 py-1 bg-green-500/10 hover:bg-green-500/25 text-green-400 font-bold rounded-lg border border-green-500/20 transition-all text-[10px]"
+                              >
+                                Feito
+                              </button>
+                              <button
+                                onClick={() => declineTask(task)}
+                                className="px-2 py-1 bg-red-500/10 hover:bg-red-500/25 text-red-400 font-bold rounded-lg border border-red-500/20 transition-all text-[10px]"
+                              >
+                                Não fiz
+                              </button>
                             </div>
+                          ) : isPastDay ? (
+                            <span className="text-[9px] font-bold text-zinc-600 bg-zinc-950/40 border border-zinc-900 px-2 py-1 rounded-lg">
+                              Perdido
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-bold text-primary-400/80 bg-primary-950/20 border border-primary-900/20 px-2 py-1 rounded-lg">
+                              Agendado
+                            </span>
                           )}
                         </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <button 
-                          onClick={() => toggleTask(task.id)}
-                          className={cn(
-                            "p-2 rounded-lg transition-colors",
-                            task.isActive ? "text-green-500 hover:bg-green-500/10" : "text-zinc-600 hover:bg-zinc-800"
-                          )}
-                          title={task.isActive ? "Desativar Alarme" : "Ativar Alarme"}
-                        >
-                          {task.isActive ? <CheckCircle2 size={20} /> : <BellOff size={20} />}
-                        </button>
-                        <button 
-                          onClick={() => startEdit(task)}
-                          className="p-2 text-primary-400 bg-primary-500/10 hover:bg-primary-500/20 rounded-lg transition-colors border border-primary-500/20"
-                          title="Editar alarme"
-                        >
-                          <Edit2 size={18} />
-                        </button>
-                        <button 
-                          onClick={() => deleteTask(task.id)}
-                          className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                          title="Excluir"
-                        >
-                          <Trash2 size={18} />
-                        </button>
                       </div>
                     </div>
-
-                    {/* Registros de Conclusão Manual */}
-                    {task.isActive && (!isHolidayMode || task.type !== 'routine') && (() => {
-                      const todayRecord = history.find(h =>
-                        h.taskId === task.id &&
-                        (() => { try { return isSameDay(parseISO(h.completedAt), new Date()); } catch { return false; } })()
-                      );
-                      if (todayRecord) {
-                        return (
-                          <div className="pt-3 border-t border-zinc-800/30 flex items-center justify-between text-xs mt-1">
-                            <span className="text-zinc-500 font-medium">Registrado hoje:</span>
-                            <span className={cn(
-                              "px-3 py-1.5 rounded-xl font-bold flex items-center gap-1",
-                              todayRecord.status === 'completed'
-                                ? "bg-green-500/10 text-green-400 border border-green-500/20"
-                                : "bg-red-500/10 text-red-400 border border-red-500/20"
-                            )}>
-                              {todayRecord.status === 'completed' ? <><CheckCircle2 size={12} /> Feito</> : <><X size={12} /> Não fiz</>}
-                            </span>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div className="pt-3 border-t border-zinc-800/30 flex items-center justify-between text-xs mt-1">
-                          <span className="text-zinc-500 font-medium">Registrar hoje:</span>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => completeTask(task)}
-                              className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/25 text-green-400 font-bold rounded-xl border border-green-500/20 transition-all flex items-center gap-1 active:scale-95"
-                            >
-                              <CheckCircle2 size={12} /> Feito
-                            </button>
-                            <button
-                              onClick={() => declineTask(task)}
-                              className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/25 text-red-400 font-bold rounded-xl border border-red-500/20 transition-all flex items-center gap-1 active:scale-95"
-                            >
-                              <X size={12} /> Não fiz
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+                  );
+                })
+              )}
             </div>
           </motion.div>
         )}
@@ -1622,7 +1875,7 @@ export default function App() {
         )}
 
         {/* --- BOTTOM NAVIGATION BAR --- */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 px-2 pt-3 pb-9 md:pb-3 flex items-center justify-around shadow-2xl">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 px-2 pt-3 pb-[calc(env(safe-area-inset-bottom,16px)+12px)] md:pb-4 flex items-center justify-around shadow-2xl">
           <button
             onClick={() => setCurrentTab('tasks')}
             className={cn(
@@ -1631,7 +1884,18 @@ export default function App() {
             )}
           >
             <Clock size={20} className={currentTab === 'tasks' ? "scale-110 text-primary-500" : ""} />
-            <span className="text-[10px] tracking-wider">Tarefas</span>
+            <span className="text-[10px] tracking-wider font-semibold">Tarefas</span>
+          </button>
+
+          <button
+            onClick={() => setCurrentTab('timeline')}
+            className={cn(
+              "flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all",
+              currentTab === 'timeline' ? "text-primary-400 font-bold" : "text-zinc-500 hover:text-zinc-300"
+            )}
+          >
+            <Calendar size={20} className={currentTab === 'timeline' ? "scale-110 text-primary-500" : ""} />
+            <span className="text-[10px] tracking-wider font-semibold">Timeline</span>
           </button>
 
           <button
@@ -1642,7 +1906,7 @@ export default function App() {
             )}
           >
             <Sliders size={20} className={currentTab === 'conditions' ? "scale-110 text-primary-500" : ""} />
-            <span className="text-[10px] tracking-wider">Condições</span>
+            <span className="text-[10px] tracking-wider font-semibold">Condições</span>
           </button>
 
           <button
@@ -1653,7 +1917,7 @@ export default function App() {
             )}
           >
             <History size={20} className={currentTab === 'history' ? "scale-110 text-primary-500" : ""} />
-            <span className="text-[10px] tracking-wider">Histórico</span>
+            <span className="text-[10px] tracking-wider font-semibold">Histórico</span>
           </button>
 
           <button
@@ -1664,7 +1928,7 @@ export default function App() {
             )}
           >
             <Settings size={20} className={currentTab === 'install' ? "scale-110 text-primary-500" : ""} />
-            <span className="text-[10px] tracking-wider">Ajustes</span>
+            <span className="text-[10px] tracking-wider font-semibold">Ajustes</span>
           </button>
         </div>
 
@@ -1907,7 +2171,7 @@ export default function App() {
                 <div className="space-y-2">
                   <h3 className="text-xl font-bold text-white">Ativar Notificações 🔔</h3>
                   <p className="text-xs text-zinc-400 leading-relaxed px-2">
-                    O <strong>Silencioso</strong> precisa de permissão para enviar notificações para que seus alarmes e lembretes toquem no horário exato!
+                    O <strong>Barulhento</strong> precisa de permissão para enviar notificações para que seus alarmes e lembretes toquem no horário exato!
                   </p>
                 </div>
 
