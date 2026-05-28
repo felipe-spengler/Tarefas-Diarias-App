@@ -140,9 +140,8 @@ function getNextOccurrence(task: Task, now: Date): Date {
       
       const dayOfWeek = d.getDay() as DayOfWeek;
       if (weekdays.includes(dayOfWeek)) {
-        // Se for hoje mas o horário do alarme (com antecedência) já passou, pula para o próximo dia
-        const triggerTime = addMinutes(d, -task.advanceMinutes);
-        if (i === 0 && triggerTime.getTime() <= now.getTime()) {
+        // Pula hoje apenas se o horário REAL da tarefa já tiver passado completamente hoje
+        if (i === 0 && d.getTime() <= now.getTime()) {
           continue;
         }
         
@@ -436,13 +435,20 @@ export default function App() {
         if (!task.isActive) continue;
 
         const nextOcc = getNextOccurrence(task, now);
-        const notifTime = addMinutes(nextOcc, -task.advanceMinutes);
+        let notifTime = addMinutes(nextOcc, -task.advanceMinutes);
+        let advMsg = task.advanceMinutes > 0
+          ? `Inicia em ${task.advanceMinutes}min (às ${task.time})`
+          : `É hora de: ${task.title}`;
+
+        // Se a antecedência programada já passou, mas o horário real da tarefa AINDA está no futuro,
+        // agendamos a notificação para disparar no horário exato da tarefa!
+        if (notifTime <= now && nextOcc > now) {
+          notifTime = nextOcc;
+          advMsg = `⏰ É hora de: ${task.title}`;
+        }
 
         // Agenda apenas no futuro
         if (notifTime > now) {
-          const advMsg = task.advanceMinutes > 0
-            ? `Inicia em ${task.advanceMinutes}min (às ${task.time})`
-            : `É hora de: ${task.title}`;
           toSchedule.push({
             title: `⏰ ${task.title}`,
             body: advMsg,
