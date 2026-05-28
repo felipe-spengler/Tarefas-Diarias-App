@@ -45,6 +45,16 @@ function generateId() {
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 }
 
+// Converte UUID de tarefa para ID numérico estável (LocalNotifications exige number)
+function taskToNotifId(taskId: string): number {
+  let hash = 0;
+  for (let i = 0; i < taskId.length; i++) {
+    hash = ((hash << 5) - hash) + taskId.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % 2000000000; // Max safe Android notification ID
+}
+
 // --- Types ---
 type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 is Sunday
 
@@ -335,6 +345,111 @@ export default function App() {
     checkPermissions();
   }, [checkPermissions]);
 
+  // --- Setup Android: Canal de Alta Prioridade + Listeners de Notificação ---
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    // Cria canal de alarme com IMPORTANCE_HIGH (obrigatório Android 8+)
+    LocalNotifications.createChannel({
+      id: 'alarm',
+      name: 'Alarmes',
+      importance: 5, // IMPORTANCE_HIGH
+      visibility: 1, // PUBLIC - aparece na tela de bloqueio
+      vibration: true,
+      lights: true,
+      lightColor: '#FF5555',
+    }).catch(() => {});
+
+    // Ouve notificação RECEBIDA enquanto app está em primeiro plano
+    const receivedSub = LocalNotifications.addListener(
+      'localNotificationReceived',
+      (notification) => {
+        const taskId = (notification.extra as any)?.taskId;
+        if (!taskId) return;
+        setTasks(prev => {
+          const task = prev.find(t => t.id === taskId);
+          if (task && task.isActive) {
+            setTimeout(() => setActiveAlarm(task), 0);
+          }
+          return prev;
+        });
+      }
+    );
+
+    // Ouve toque do usuário na notificação (app em background ou fechado)
+    const actionSub = LocalNotifications.addListener(
+      'localNotificationActionPerformed',
+      (action) => {
+        const taskId = (action.notification.extra as any)?.taskId;
+        if (!taskId) return;
+        setTasks(prev => {
+          const task = prev.find(t => t.id === taskId);
+          if (task) {
+            setTimeout(() => setActiveAlarm(task), 0);
+          }
+          return prev;
+        });
+      }
+    );
+
+    return () => {
+      receivedSub.then(s => s.remove()).catch(() => {});
+      actionSub.then(s => s.remove()).catch(() => {});
+    };
+  }, []);
+
+  // Agenda notificações nativas no horário EXATO de cada tarefa
+  // Funciona mesmo com o app completamente fechado
+  const scheduleNativeAlarmsForTasks = useCallback(async (taskList: Task[]) => {
+    if (!Capacitor.isNativePlatform()) return;
+    try {
+      // Cancela agendamentos anteriores (exceto o widget persistente id=999)
+      const pending = await LocalNotifications.getPending();
+      const toCancel = pending.notifications
+        .filter(n => n.id !== 999)
+        .map(n => ({ id: n.id }));
+      if (toCancel.length > 0) {
+        await LocalNotifications.cancel({ notifications: toCancel });
+      }
+
+      const now = new Date();
+      const toSchedule: any[] = [];
+
+      for (const task of taskList) {
+        if (!task.isActive) continue;
+
+        const nextOcc = getNextOccurrence(task, now);
+        const notifTime = addMinutes(nextOcc, -task.advanceMinutes);
+
+        // Agenda apenas no futuro
+        if (notifTime > now) {
+          const advMsg = task.advanceMinutes > 0
+            ? `Inicia em ${task.advanceMinutes}min (às ${task.time})`
+            : `É hora de: ${task.title}`;
+          toSchedule.push({
+            title: `⏰ ${task.title}`,
+            body: advMsg,
+            id: taskToNotifId(task.id),
+            schedule: { at: notifTime, allowWhileIdle: true },
+            channelId: 'alarm',
+            extra: { taskId: task.id },
+          });
+        }
+      }
+
+      if (toSchedule.length > 0) {
+        await LocalNotifications.schedule({ notifications: toSchedule });
+      }
+    } catch (e) {
+      console.warn('Erro ao agendar alarmes nativos:', e);
+    }
+  }, []);
+
+  // Re-agenda sempre que as tarefas mudarem
+  useEffect(() => {
+    scheduleNativeAlarmsForTasks(tasks);
+  }, [tasks, scheduleNativeAlarmsForTasks]);
+
   // --- Background Logic (Every 30s) ---
   // Ref para manter sempre os valores mais recentes sem invalidar o interval
   const notifStateRef = React.useRef({ isHolidayMode, history });
@@ -466,14 +581,14 @@ export default function App() {
 
   const sendNotification = async (task: Task) => {
     const advMsg = task.advanceMinutes > 0
-      ? `em ${task.advanceMinutes} min (às ${task.time})`
+      ? `em ${task.advanceMinutes}min (às ${task.time})`
       : `às ${task.time}`;
     const message = `⏰ ${task.title} - ${advMsg}`;
     
     // Mostra overlay fullscreen de alarme
     setActiveAlarm(task);
     
-    // Toca o áudio em loop — com retry caso ainda bloqueado
+    // Toca o áudio em loop — com retry caso ainda bloqueado pelo autoplay
     if (audio) {
       audio.currentTime = 0;
       audio.loop = true;
@@ -490,18 +605,19 @@ export default function App() {
       if (vibrationEnabled) {
         Haptics.impact({ style: ImpactStyle.Heavy });
       }
+      // A notificação nativa exata já foi agendada em scheduleNativeAlarmsForTasks.
+      // Aqui dispara uma notificação imediata extra (fallback) com canal alarm.
       await LocalNotifications.schedule({
-        notifications: [
-          {
-            title: '⏰ Alarme Silencioso',
-            body: message,
-            id: Math.floor(Math.random() * 10000),
-            schedule: { at: new Date(Date.now() + 100) },
-            sound: 'alarm.wav',
-            attachments: [],
-            extra: null
-          }
-        ]
+        notifications: [{
+          title: `⏰ ${task.title}`,
+          body: message,
+          id: taskToNotifId(task.id) + 1000000, // ID diferente do agendado
+          schedule: { at: new Date(Date.now() + 100) },
+          channelId: 'alarm', // canal de alta prioridade (sem alarm.wav inexistente)
+          extra: { taskId: task.id },
+          attachments: [],
+          extra2: null
+        }]
       });
     } else {
       // Web: vibração via Web API
@@ -510,7 +626,7 @@ export default function App() {
       }
       // Web Notification (sistema)
       try {
-        if (typeof Notification !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           const notifOptions: any = {
             body: message,
             icon: '/app_icon.png',
@@ -518,8 +634,8 @@ export default function App() {
           };
           try {
             new Notification('⏰ Alarme Silencioso', notifOptions);
-          } catch (err) {
-            if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+          } catch {
+            if (navigator.serviceWorker?.ready) {
               const reg = await navigator.serviceWorker.ready;
               reg.showNotification('⏰ Alarme Silencioso', notifOptions);
             }
