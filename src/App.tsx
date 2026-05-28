@@ -545,7 +545,7 @@ export default function App() {
   const mostFrequentCategory = mostFrequentCategoryKey ? CATEGORIES[mostFrequentCategoryKey as keyof typeof CATEGORIES]?.label : 'Nenhuma';
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8 flex justify-center pb-24">
+    <div className="min-h-screen bg-background p-4 md:p-8 flex justify-center pb-28">
       <div className="w-full max-w-2xl">
         
         {/* --- ABA 1: TAREFAS --- */}
@@ -1185,7 +1185,7 @@ export default function App() {
         )}
 
         {/* --- BOTTOM NAVIGATION BAR --- */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 px-2 pt-2.5 pb-6 md:pb-3 flex items-center justify-around shadow-2xl">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 px-2 pt-3 pb-9 md:pb-3 flex items-center justify-around shadow-2xl">
           <button
             onClick={() => setCurrentTab('tasks')}
             className={cn(
