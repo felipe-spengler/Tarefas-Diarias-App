@@ -97,9 +97,65 @@ const DAYS = [
   { label: 'S', value: 6 },
 ];
 
+// Parseia uma string YYYY-MM-DD como horário LOCAL (evita bug de UTC-3 do parseISO)
+function parseLocalDate(dateStr: string): Date {
+  return new Date(dateStr + 'T00:00:00');
+}
+
+function getNextOccurrence(task: Task, now: Date): Date {
+  const [hours, minutes] = task.time.split(':').map(Number);
+  
+  if (task.type === 'event') {
+    if (task.date) {
+      try {
+        // Usa parseLocalDate para evitar bug de timezone (parseISO trata YYYY-MM-DD como UTC)
+        const d = parseLocalDate(task.date);
+        d.setHours(hours, minutes, 0, 0);
+        if (isValid(d)) return d;
+      } catch (e) {}
+    }
+    const d = new Date(now);
+    d.setHours(hours, minutes, 0, 0);
+    return d;
+  } else {
+    const weekdays = task.weekdays && task.weekdays.length > 0 ? task.weekdays : [0, 1, 2, 3, 4, 5, 6] as DayOfWeek[];
+    let minDiff = Infinity;
+    let bestDate = new Date(now);
+    
+    for (let i = 0; i < 8; i++) {
+      const d = new Date(now);
+      d.setDate(now.getDate() + i);
+      d.setHours(hours, minutes, 0, 0);
+      
+      const dayOfWeek = d.getDay() as DayOfWeek;
+      if (weekdays.includes(dayOfWeek)) {
+        // Se for hoje mas o horário do alarme (com antecedência) já passou, pula para o próximo dia
+        const triggerTime = addMinutes(d, -task.advanceMinutes);
+        if (i === 0 && triggerTime.getTime() <= now.getTime()) {
+          continue;
+        }
+        
+        const diff = d.getTime() - now.getTime();
+        if (diff < minDiff) {
+          minDiff = diff;
+          bestDate = d;
+        }
+      }
+    }
+    return bestDate;
+  }
+}
+
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
-  const sortedTasks = [...tasks].sort((a, b) => a.time.localeCompare(b.time));
+  const sortedTasks = React.useMemo(() => {
+    const now = new Date();
+    return [...tasks].sort((a, b) => {
+      const nextA = getNextOccurrence(a, now).getTime();
+      const nextB = getNextOccurrence(b, now).getTime();
+      return nextA - nextB;
+    });
+  }, [tasks]);
   const [isAdding, setIsAdding] = useState(false);
   const [activeTab, setActiveTab] = useState<'routine' | 'event'>('routine');
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -124,7 +180,7 @@ export default function App() {
   const [title, setTitle] = useState('');
   const [time, setTime] = useState('12:00');
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [weekdays, setWeekdays] = useState<DayOfWeek[]>([]);
+  const [weekdays, setWeekdays] = useState<DayOfWeek[]>([0, 1, 2, 3, 4, 5, 6]);
   const [advanceMinutes, setAdvanceMinutes] = useState(5);
   const [category, setCategory] = useState<Task['category']>('personal');
   const [dependencyId, setDependencyId] = useState<string>('');
@@ -217,10 +273,22 @@ export default function App() {
   }, [checkPermissions]);
 
   // --- Background Logic (Every 30s) ---
+  // Ref para manter sempre os valores mais recentes sem invalidar o interval
+  const notifStateRef = React.useRef({ isHolidayMode, history });
+  useEffect(() => {
+    notifStateRef.current = { isHolidayMode, history };
+  }, [isHolidayMode, history]);
+
+  // sendNotificationRef garante que o checkNotifications sempre usa a versão atual
+  const sendNotificationRef = React.useRef<(task: Task) => void>(() => {});
+
   const checkNotifications = useCallback(() => {
     const now = new Date();
     const currentDay = now.getDay();
-    const currentTimeStr = format(now, 'HH:mm');
+    const { isHolidayMode: holidayMode, history: hist } = notifStateRef.current;
+
+    // Coleta as tarefas a notificar FORA do updater para evitar setState dentro de setState
+    const tasksToNotify: Task[] = [];
 
     setTasks(prevTasks => {
       let changed = false;
@@ -228,14 +296,14 @@ export default function App() {
         if (!task.isActive) return task;
 
         // Skip routines in Holiday Mode
-        if (isHolidayMode && task.type === 'routine') return task;
+        if (holidayMode && task.type === 'routine') return task;
 
         // Check Snooze
         if (task.snoozedUntil && new Date(task.snoozedUntil) > now) return task;
 
         // Check Dependency (Task Condition)
         if (task.dependencyId) {
-          const wasDependentCompleted = history.some(h => 
+          const wasDependentCompleted = hist.some(h => 
             h.taskId === task.dependencyId && isSameDay(parseISO(h.completedAt), now)
           );
           if (!wasDependentCompleted) return task;
@@ -254,7 +322,8 @@ export default function App() {
         if (task.type === 'routine') {
           const isToday = task.weekdays?.includes(currentDay as DayOfWeek);
           if (isToday) {
-            if (now >= notificationTime && now < targetToday) {
+            // Janela de disparo robusta de 10 minutos (suporta inclusive 0m de antecedência e previne pulos)
+            if (now >= notificationTime && now < addMinutes(notificationTime, 10)) {
               const lastDate = task.lastNotifiedAt ? new Date(task.lastNotifiedAt) : null;
               if (!lastDate || !isSameDay(lastDate, now)) {
                 shouldNotify = true;
@@ -262,8 +331,10 @@ export default function App() {
             }
           }
         } else {
-          if (task.date && isSameDay(parseISO(task.date), now)) {
-            if (now >= notificationTime && now < targetToday) {
+          // Usa parseLocalDate para evitar bug de timezone (parseISO trata YYYY-MM-DD como UTC midnight)
+          if (task.date && isSameDay(parseLocalDate(task.date), now)) {
+            // Janela de disparo robusta de 10 minutos (suporta inclusive 0m de antecedência e previne pulos)
+            if (now >= notificationTime && now < addMinutes(notificationTime, 10)) {
               const lastDate = task.lastNotifiedAt ? new Date(task.lastNotifiedAt) : null;
               if (!lastDate || !isSameDay(lastDate, now)) {
                 shouldNotify = true;
@@ -273,7 +344,7 @@ export default function App() {
         }
 
         if (shouldNotify) {
-          sendNotification(task);
+          tasksToNotify.push(task); // Coleta para disparar FORA do updater
           changed = true;
           return { ...task, lastNotifiedAt: now.toISOString(), snoozedUntil: undefined };
         }
@@ -283,7 +354,15 @@ export default function App() {
 
       return changed ? updatedTasks : prevTasks;
     });
-  }, [tasks, history, isHolidayMode]);
+
+    // Dispara notificações APÓS o update de estado (setTimeout 0 = próximo tick)
+    // Isso evita chamar setState (setActiveAlarm) dentro de um setState updater
+    if (tasksToNotify.length > 0) {
+      setTimeout(() => {
+        tasksToNotify.forEach(task => sendNotificationRef.current(task));
+      }, 0);
+    }
+  }, []); // Deps vazio = interval NUNCA reseta, usa ref para valores atuais
 
   // --- Persistent "Widget" Notification ---
   const updatePersistentWidget = useCallback(async () => {
@@ -414,6 +493,12 @@ export default function App() {
     stopAlarm();
   };
 
+  // Mantém sendNotificationRef sempre apontando para a versão mais recente de sendNotification
+  // Sem deps = roda após cada render, garantindo que o ref nunca fica stale
+  useEffect(() => {
+    sendNotificationRef.current = sendNotification;
+  });
+
   useEffect(() => {
     const interval = setInterval(checkNotifications, 30000);
     checkNotifications(); // Run immediately on mount
@@ -451,7 +536,7 @@ export default function App() {
     setTitle('');
     setTime('12:00');
     setDate(format(new Date(), 'yyyy-MM-dd'));
-    setWeekdays([]);
+    setWeekdays([0, 1, 2, 3, 4, 5, 6]);
     setAdvanceMinutes(5);
     setCategory('personal');
     setDependencyId('');
@@ -706,8 +791,8 @@ export default function App() {
                         </button>
                         <button 
                           onClick={() => startEdit(task)}
-                          className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                          title="Editar"
+                          className="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                          title="Editar alarme"
                         >
                           <Edit2 size={18} />
                         </button>
@@ -722,25 +807,46 @@ export default function App() {
                     </div>
 
                     {/* Registros de Conclusão Manual */}
-                    {task.isActive && (!isHolidayMode || task.type !== 'routine') && (
-                      <div className="pt-3 border-t border-zinc-800/30 flex items-center justify-between text-xs mt-1">
-                        <span className="text-zinc-500 font-medium">Registrar hoje:</span>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => completeTask(task)}
-                            className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/25 text-green-400 font-bold rounded-xl border border-green-500/20 transition-all flex items-center gap-1 active:scale-95"
-                          >
-                            <CheckCircle2 size={12} /> Feito
-                          </button>
-                          <button
-                            onClick={() => declineTask(task)}
-                            className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/25 text-red-400 font-bold rounded-xl border border-red-500/20 transition-all flex items-center gap-1 active:scale-95"
-                          >
-                            <X size={12} /> Não fiz
-                          </button>
+                    {task.isActive && (!isHolidayMode || task.type !== 'routine') && (() => {
+                      const todayRecord = history.find(h =>
+                        h.taskId === task.id &&
+                        (() => { try { return isSameDay(parseISO(h.completedAt), new Date()); } catch { return false; } })()
+                      );
+                      if (todayRecord) {
+                        return (
+                          <div className="pt-3 border-t border-zinc-800/30 flex items-center justify-between text-xs mt-1">
+                            <span className="text-zinc-500 font-medium">Registrado hoje:</span>
+                            <span className={cn(
+                              "px-3 py-1.5 rounded-xl font-bold flex items-center gap-1",
+                              todayRecord.status === 'completed'
+                                ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                                : "bg-red-500/10 text-red-400 border border-red-500/20"
+                            )}>
+                              {todayRecord.status === 'completed' ? <><CheckCircle2 size={12} /> Feito</> : <><X size={12} /> Não fiz</>}
+                            </span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="pt-3 border-t border-zinc-800/30 flex items-center justify-between text-xs mt-1">
+                          <span className="text-zinc-500 font-medium">Registrar hoje:</span>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => completeTask(task)}
+                              className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/25 text-green-400 font-bold rounded-xl border border-green-500/20 transition-all flex items-center gap-1 active:scale-95"
+                            >
+                              <CheckCircle2 size={12} /> Feito
+                            </button>
+                            <button
+                              onClick={() => declineTask(task)}
+                              className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/25 text-red-400 font-bold rounded-xl border border-red-500/20 transition-all flex items-center gap-1 active:scale-95"
+                            >
+                              <X size={12} /> Não fiz
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </motion.div>
                 ))}
               </AnimatePresence>
