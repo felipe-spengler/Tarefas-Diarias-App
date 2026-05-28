@@ -36,6 +36,15 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function generateId() {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+  } catch (e) {}
+  return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+}
+
 // --- Types ---
 type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 is Sunday
 
@@ -121,14 +130,25 @@ export default function App() {
 
   // Alarm State
   const [activeAlarm, setActiveAlarm] = useState<Task | null>(null);
-  const [audio] = useState(new Audio('https://assets.mixkit.co/active_storage/sfx/941/941-preview.mp3'));
+  const [audio] = useState<HTMLAudioElement | null>(() => {
+    try {
+      return new Audio('https://assets.mixkit.co/active_storage/sfx/941/941-preview.mp3');
+    } catch (e) {
+      console.warn('Audio initialization not supported in this context:', e);
+      return null;
+    }
+  });
   
   useEffect(() => {
-    audio.loop = true;
+    if (audio) {
+      audio.loop = true;
+    }
   }, [audio]);
 
   useEffect(() => {
-    audio.src = selectedAudioUrl;
+    if (audio) {
+      audio.src = selectedAudioUrl;
+    }
   }, [selectedAudioUrl, audio]);
 
   // --- Persistence ---
@@ -318,7 +338,7 @@ export default function App() {
 
   const completeTask = (task: Task) => {
     const newItem: HistoryItem = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       taskId: task.id,
       title: task.title,
       completedAt: new Date().toISOString(),
@@ -331,7 +351,7 @@ export default function App() {
 
   const declineTask = (task: Task) => {
     const newItem: HistoryItem = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       taskId: task.id,
       title: task.title,
       completedAt: new Date().toISOString(),
@@ -361,7 +381,7 @@ export default function App() {
     if (!title.trim()) return;
 
     const newTask: Task = {
-      id: editingTask?.id || crypto.randomUUID(),
+      id: editingTask?.id || generateId(),
       type: activeTab,
       title,
       time,
@@ -992,13 +1012,19 @@ export default function App() {
                       setSelectedAudioUrl(newUrl);
                       
                       // Toca um preview curto de 2 segundos
-                      audio.src = newUrl;
-                      audio.currentTime = 0;
-                      audio.play().catch(err => console.log('Preview bloqueado pela segurança do navegador'));
-                      setTimeout(() => {
-                        audio.pause();
-                        audio.currentTime = 0;
-                      }, 2000);
+                      if (audio) {
+                        try {
+                          audio.src = newUrl;
+                          audio.currentTime = 0;
+                          audio.play().catch(err => console.log('Preview bloqueado pela segurança do navegador'));
+                          setTimeout(() => {
+                            try {
+                              audio.pause();
+                              audio.currentTime = 0;
+                            } catch (err) {}
+                          }, 2000);
+                        } catch (err) {}
+                      }
                     }}
                   >
                     {ALARM_SOUNDS.map(sound => (
@@ -1026,29 +1052,19 @@ export default function App() {
                 </p>
               </div>
 
-              <div className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
+              <div className="flex justify-center pt-2">
                 {/* Download Direct APK */}
                 <a 
                   href="/app-debug.apk"
                   download="Silencioso-App.apk"
-                  className="px-6 py-3.5 bg-primary-600 hover:bg-primary-500 text-white font-bold rounded-xl text-sm shadow-lg shadow-primary-950/40 transition-all flex items-center justify-center gap-2 active:scale-95"
+                  className="px-8 py-3.5 bg-primary-600 hover:bg-primary-500 text-white font-bold rounded-xl text-sm shadow-lg shadow-primary-950/40 transition-all flex items-center justify-center gap-2 active:scale-95 w-full max-w-xs"
                 >
                   <Download size={18} /> BAIXAR APK DIRETO
-                </a>
-
-                {/* GitHub Actions Backup */}
-                <a 
-                  href="https://github.com/felipe-spengler/Tarefas-Diarias-App/actions" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="px-6 py-3.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-semibold rounded-xl text-sm border border-zinc-800 transition-all flex items-center justify-center gap-2"
-                >
-                  Backup pelo GitHub
                 </a>
               </div>
               
               <p className="text-[10px] text-zinc-500 max-w-xs mx-auto leading-normal">
-                Nota: Lembre-se de colar o arquivo <code>app-debug.apk</code> dentro da pasta <code>public/</code> do projeto no VS Code para ativar o download direto!
+                Nota: O APK já está hospedado e pronto para download no site!
               </p>
             </div>
 
